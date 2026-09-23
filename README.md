@@ -92,6 +92,17 @@ CORRUPTED: 557db03de997c86a4a028e1ebd3a1ceb225be238
   actual    b43d29553e703c532ca57654be4a37eaaf729806
 ```
 
+## Visual guide
+
+`ui/inside-minigit.html` is a single page you open in a browser (no server needed).
+It shows the same steps in pictures: files get a fingerprint, identical text shares one
+box, snapshots point to folder lists, time travel rebuilds files, and damage is caught.
+It uses the same object format and SHA-1 as the C code, so the fingerprints on the page
+match the ones `minigit` prints.
+
+Click **Open my real .minigit folder** and choose a project folder where you ran
+`minigit` to see the objects and history the program actually stored.
+
 ## How it works
 
 ```

@@ -1,0 +1,1082 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Inside minigit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root {
+  --ground: #f3f5f9;
+  --surface: #ffffff;
+  --surface-2: #eaeef5;
+  --ink: #18202c;
+  --ink-soft: #536074;
+  --line: #d5dbe5;
+  --blob: #0b8286;
+  --blob-bg: #e1f3f2;
+  --tree: #b87400;
+  --tree-bg: #fcf0d9;
+  --commit: #4a4ec2;
+  --commit-bg: #e8e8fb;
+  --good: #23874d;
+  --good-bg: #e0f3e7;
+  --bad: #c73838;
+  --bad-bg: #fbe4e4;
+  --btn: #18202c;
+  --btn-ink: #ffffff;
+  --focus: #4a4ec2;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #10141b; --surface: #19202a; --surface-2: #222b37; --ink: #e7ebf2; --ink-soft: #9aa6b8; --line: #313c4b;
+    --blob: #4cc9c4; --blob-bg: #13302f; --tree: #f0b44c; --tree-bg: #33280f; --commit: #9a9ef5; --commit-bg: #242648;
+    --good: #5bd08a; --good-bg: #15301f; --bad: #f07878; --bad-bg: #3a1a1a; --btn: #e7ebf2; --btn-ink: #10141b; --focus: #9a9ef5;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #10141b; --surface: #19202a; --surface-2: #222b37; --ink: #e7ebf2; --ink-soft: #9aa6b8; --line: #313c4b;
+  --blob: #4cc9c4; --blob-bg: #13302f; --tree: #f0b44c; --tree-bg: #33280f; --commit: #9a9ef5; --commit-bg: #242648;
+  --good: #5bd08a; --good-bg: #15301f; --bad: #f07878; --bad-bg: #3a1a1a; --btn: #e7ebf2; --btn-ink: #10141b; --focus: #9a9ef5;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font: 16px/1.5 var(--body);
+  padding: 0 16px;
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 20px; }
+h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; line-height: 1.15; }
+h1 { font-size: clamp(30px, 5vw, 44px); font-weight: 800; letter-spacing: -0.02em; }
+h2 { font-size: 21px; font-weight: 700; }
+h3 { font-size: 16px; font-weight: 700; font-family: var(--body); }
+p { margin: 0; }
+code, .mono { font-family: var(--mono); font-size: 0.88em; }
+.soft { color: var(--ink-soft); }
+.small { font-size: 14px; }
+.term { font-size: 12px; color: var(--ink-soft); font-family: var(--mono); letter-spacing: 0; }
+
+button, input, textarea { font: inherit; color: inherit; }
+button {
+  cursor: pointer; border-radius: 10px; border: 1.5px solid var(--line);
+  background: var(--surface); padding: 8px 14px; font-weight: 700; line-height: 1.2;
+}
+button:hover { border-color: var(--ink-soft); }
+button.primary { background: var(--btn); color: var(--btn-ink); border-color: var(--btn); }
+button.primary:hover { opacity: .9; }
+button.danger { color: var(--bad); border-color: var(--bad); background: transparent; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, .obj:focus-visible, .snap:focus-visible {
+  outline: 3px solid var(--focus); outline-offset: 2px;
+}
+input[type=text], textarea {
+  background: var(--surface); border: 1.5px solid var(--line); border-radius: 8px; padding: 7px 10px; width: 100%;
+}
+textarea { font-family: var(--mono); font-size: 14px; resize: vertical; min-height: 58px; }
+
+/* header */
+header { display: grid; gap: 10px; }
+.lede { font-size: 19px; max-width: 62ch; }
+.modes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.modes button[aria-pressed="true"] { background: var(--btn); color: var(--btn-ink); border-color: var(--btn); }
+
+/* words strip */
+.words { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 14px; }
+.words span b { font-weight: 700; }
+.words span i { font-style: normal; color: var(--ink-soft); font-family: var(--mono); font-size: 12.5px; }
+
+/* panels */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 18px; display: grid; gap: 14px; align-content: start; min-width: 0; }
+.panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+
+/* tour */
+.tour { background: var(--surface); border: 2px solid var(--ink); border-radius: 18px; padding: 20px; display: grid; gap: 16px; }
+.steps { display: flex; gap: 6px; flex-wrap: wrap; list-style: none; margin: 0; padding: 0; }
+.steps button { padding: 6px 11px; font-size: 14px; border-radius: 999px; }
+.steps button[aria-current="step"] { background: var(--btn); color: var(--btn-ink); border-color: var(--btn); }
+.steps button.done { border-color: var(--good); color: var(--good); }
+.tour-body { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; }
+.tour-text { display: grid; gap: 10px; align-content: start; font-size: 17.5px; max-width: 62ch; }
+.tour-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.happened { background: var(--good-bg); border-radius: 14px; padding: 14px 16px; display: grid; gap: 8px; align-content: start; }
+.happened.waiting { background: var(--surface-2); }
+.happened.alarm { background: var(--bad-bg); }
+.happened ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+
+/* fingerprint machine */
+.machine { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.fp-row { display: grid; gap: 6px; }
+.fp { font-family: var(--mono); font-size: 14px; word-break: break-all; background: var(--surface-2); padding: 8px 10px; border-radius: 8px; }
+.fp .diff { color: var(--bad); font-weight: 600; }
+.fp .same { color: var(--good); font-weight: 600; }
+
+/* workspace */
+.work { display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.3fr) minmax(0, 0.9fr); gap: 16px; align-items: start; }
+
+/* files */
+.file { border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 12px; display: grid; gap: 8px; }
+.file-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fname { font-family: var(--mono); font-weight: 600; }
+.badge { font-size: 13px; font-weight: 700; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.b-new { background: var(--tree-bg); color: var(--tree); }
+.b-changed { background: var(--bad-bg); color: var(--bad); }
+.b-ready { background: var(--commit-bg); color: var(--commit); }
+.b-safe { background: var(--good-bg); color: var(--good); }
+.file-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.file-actions button { font-size: 14px; padding: 5px 10px; }
+.row { display: flex; gap: 8px; align-items: center; }
+.row input { flex: 1; }
+
+/* cupboard */
+.shelf { display: grid; gap: 8px; }
+.shelf-title { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.dot { width: 12px; height: 12px; border-radius: 4px; flex: none; }
+.shelf-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.empty { font-size: 14px; color: var(--ink-soft); font-style: italic; padding: 6px 0; }
+.obj { border-radius: 12px; padding: 9px 11px; text-align: left; display: grid; gap: 3px; border: 2px solid transparent; font-weight: 400; }
+.obj.t-blob { background: var(--blob-bg); }
+.obj.t-tree { background: var(--tree-bg); }
+.obj.t-commit { background: var(--commit-bg); }
+.obj .h { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+.obj.t-blob .h { color: var(--blob); }
+.obj.t-tree .h { color: var(--tree); }
+.obj.t-commit .h { color: var(--commit); }
+.obj .what { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.obj.sel { border-color: var(--ink); }
+.obj.fresh { animation: pop .9s ease-out; }
+.obj.reused { animation: glow 1.4s ease-out; }
+.obj.broken { background: var(--bad-bg); border-color: var(--bad); }
+.obj.broken .h { color: var(--bad); }
+@keyframes pop { 0% { transform: scale(.7); } 60% { transform: scale(1.06); } 100% { transform: scale(1); } }
+@keyframes glow { 0%, 60% { box-shadow: 0 0 0 4px var(--good); } 100% { box-shadow: 0 0 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) { .obj.fresh, .obj.reused { animation: none; } }
+.savings { background: var(--surface-2); border-radius: 12px; padding: 12px 14px; display: grid; gap: 8px; }
+.bar { height: 12px; border-radius: 6px; background: var(--line); overflow: hidden; }
+.bar > span { display: block; height: 100%; background: var(--good); border-radius: 6px; }
+.nums { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+
+/* snapshots */
+.snap { border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 12px; display: grid; gap: 6px; cursor: pointer; }
+.snap.here { border-color: var(--commit); background: var(--commit-bg); }
+.snap-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
+.snap .msg { font-weight: 700; }
+.pill { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--commit); color: var(--surface); }
+.pill.main { background: var(--ink); color: var(--surface); }
+.chainlink { text-align: center; color: var(--ink-soft); font-size: 13px; line-height: 1; }
+
+/* picture + inspector */
+.lower { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.pic { display: grid; gap: 10px; justify-items: center; overflow-x: auto; }
+.pic .node { border-radius: 12px; padding: 8px 14px; text-align: center; min-width: 170px; border: 2px solid transparent; }
+.pic .node .h { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+.pic .n-commit { background: var(--commit-bg); } .pic .n-commit .h { color: var(--commit); }
+.pic .n-tree { background: var(--tree-bg); } .pic .n-tree .h { color: var(--tree); }
+.pic .n-blob { background: var(--blob-bg); min-width: 0; } .pic .n-blob .h { color: var(--blob); }
+.pic .arrow { color: var(--ink-soft); font-size: 13px; text-align: center; }
+.pic .leaves { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.pic .leaf { display: grid; gap: 4px; justify-items: center; }
+.pic .leaf .fn { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+.pic .node.shared { border-color: var(--good); }
+.tag { font-size: 12px; font-weight: 700; color: var(--good); }
+.inside { font-family: var(--mono); font-size: 13px; background: var(--surface-2); border-radius: 10px; padding: 10px 12px; white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow: auto; }
+.inside .nul { color: var(--bad); font-weight: 600; }
+.inside .bin { color: var(--tree); }
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; font-size: 14.5px; }
+.kv dt { color: var(--ink-soft); }
+.kv dd { margin: 0; word-break: break-all; }
+
+/* log */
+.log { display: grid; gap: 8px; max-height: 360px; overflow: auto; }
+.entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.entry .cmd { font-family: var(--mono); font-size: 12.5px; background: var(--surface-2); padding: 2px 8px; border-radius: 6px; align-self: start; white-space: nowrap; }
+.entry.bad { color: var(--bad); }
+
+/* open repo */
+.drop { border: 2px dashed var(--line); border-radius: 14px; padding: 18px; display: grid; gap: 10px; }
+.steps-list { margin: 0; padding-left: 22px; display: grid; gap: 6px; }
+
+@media (max-width: 980px) {
+  .work { grid-template-columns: 1fr; }
+  .lower { grid-template-columns: 1fr; }
+  .tour-body { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .machine { grid-template-columns: 1fr; }
+  .entry { grid-template-columns: 1fr; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Inside minigit</h1>
+    <p class="lede">minigit gives every piece of data a name made from the data itself — a <b>fingerprint</b>. This page shows, step by step, what the program does inside its <code>.minigit</code> folder.</p>
+    <div class="words" aria-label="Simple words and the real terms">
+      <span><b>Fingerprint</b> <i>= SHA-1 hash</i></span>
+      <span><b>Cupboard</b> <i>= object store (.minigit/objects)</i></span>
+      <span><b>File-content box</b> <i>= blob</i></span>
+      <span><b>Folder-list box</b> <i>= tree</i></span>
+      <span><b>Snapshot</b> <i>= commit</i></span>
+      <span><b>Ready list</b> <i>= index</i></span>
+      <span><b>Time travel</b> <i>= checkout</i></span>
+    </div>
+    <div class="modes" role="group" aria-label="Mode">
+      <button id="mode-tour" aria-pressed="true">Guided tour</button>
+      <button id="mode-open" aria-pressed="false">Open my real .minigit folder</button>
+      <button id="reset">Start over</button>
+    </div>
+  </header>
+
+  <section class="tour" id="tour" aria-label="Guided tour"></section>
+
+  <section class="panel" id="openpanel" hidden aria-label="Open a real repository">
+    <h2>See what the C program did</h2>
+    <p>Run the program in a folder first, for example:</p>
+    <pre class="inside">minigit init
+printf 'Hello World\n' &gt; hello.txt
+cp hello.txt copy.txt
+minigit add .
+minigit commit -m "First snapshot"</pre>
+    <div class="drop">
+      <ol class="steps-list">
+        <li>Click the button below.</li>
+        <li>Choose the project folder — the one that <b>contains</b> <code>.minigit</code>.</li>
+        <li>Your browser may ask to "upload" the folder. Nothing leaves your computer; this page only reads it.</li>
+      </ol>
+      <label class="small" for="folder"><b>Project folder</b></label>
+      <input id="folder" type="file" webkitdirectory directory multiple>
+      <p id="open-msg" class="small soft">After loading, the cupboard, snapshots and pictures below show your real data. You can keep playing; nothing is written back to disk.</p>
+    </div>
+  </section>
+
+  <section class="panel" aria-label="Fingerprint machine">
+    <div class="panel-head">
+      <h2>The fingerprint machine</h2>
+      <span class="term">SHA-1 of "blob &lt;size&gt;\0&lt;text&gt;"</span>
+    </div>
+    <p class="small soft">Type anything. Each line is treated like a small file that holds that text. Change just one letter and watch the fingerprint change completely.</p>
+    <div class="machine">
+      <div class="fp-row">
+        <label for="fp-a"><b>Text A</b></label>
+        <input id="fp-a" type="text" value="Hello World">
+        <div class="fp" id="fp-a-out"></div>
+      </div>
+      <div class="fp-row">
+        <label for="fp-b"><b>Text B</b></label>
+        <input id="fp-b" type="text" value="Hello World!">
+        <div class="fp" id="fp-b-out"></div>
+      </div>
+    </div>
+    <p id="fp-verdict" class="small"></p>
+  </section>
+
+  <div class="work">
+    <section class="panel" aria-label="Your files">
+      <div class="panel-head">
+        <h2>Your files</h2>
+        <span class="term">working folder</span>
+      </div>
+      <div id="files" style="display:grid;gap:10px"></div>
+      <div class="row">
+        <input id="newname" type="text" placeholder="new-file.txt" aria-label="New file name">
+        <button id="newfile">Add file</button>
+      </div>
+      <button id="addall">Put all files in the cupboard</button>
+      <div style="display:grid;gap:8px">
+        <label for="msg"><b>Snapshot name</b></label>
+        <input id="msg" type="text" value="First snapshot">
+        <button class="primary" id="commit">Take a snapshot</button>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="The cupboard">
+      <div class="panel-head">
+        <h2>The cupboard</h2>
+        <span class="term">.minigit/objects</span>
+      </div>
+      <p class="small soft">Every box is named by the fingerprint of what's inside. Click a box to open it.</p>
+      <div id="cupboard" style="display:grid;gap:14px"></div>
+      <div class="savings" id="savings"></div>
+      <div class="row" style="flex-wrap:wrap">
+        <button id="verify">Check every box for damage</button>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Snapshots">
+      <div class="panel-head">
+        <h2>Snapshots</h2>
+        <span class="term">commits · log</span>
+      </div>
+      <p class="small soft">Newest on top. Each snapshot remembers the one before it. Click one to see its picture.</p>
+      <div id="snaps" style="display:grid;gap:4px"></div>
+    </section>
+  </div>
+
+  <div class="lower">
+    <section class="panel" aria-label="Snapshot picture">
+      <div class="panel-head">
+        <h2 id="pic-title">Picture of a snapshot</h2>
+        <span class="term">commit → tree → blobs</span>
+      </div>
+      <div id="pic" class="pic"></div>
+    </section>
+    <section class="panel" aria-label="Open box">
+      <div class="panel-head">
+        <h2>Open box</h2>
+        <span class="term">cat-file · verify</span>
+      </div>
+      <div id="inspect"></div>
+    </section>
+  </div>
+
+  <section class="panel" aria-label="What happened">
+    <div class="panel-head">
+      <h2>What happened, in order</h2>
+      <span class="term">the same thing in the terminal →</span>
+    </div>
+    <div class="log" id="log"></div>
+  </section>
+</div>
+
+<script>
+(() => {
+"use strict";
+
+/* ---------------- SHA-1 (same algorithm as src/sha1.c) ---------------- */
+function sha1(bytes) {
+  const len = bytes.length;
+  const total = Math.ceil((len + 9) / 64) * 64;
+  const m = new Uint8Array(total);
+  m.set(bytes);
+  m[len] = 0x80;
+  const dv = new DataView(m.buffer);
+  const bits = len * 8;
+  dv.setUint32(total - 8, Math.floor(bits / 4294967296));
+  dv.setUint32(total - 4, bits >>> 0);
+  let h0 = 0x67452301, h1 = 0xEFCDAB89, h2 = 0x98BADCFE, h3 = 0x10325476, h4 = 0xC3D2E1F0;
+  const w = new Uint32Array(80);
+  for (let off = 0; off < total; off += 64) {
+    for (let i = 0; i < 16; i++) w[i] = dv.getUint32(off + i * 4);
+    for (let i = 16; i < 80; i++) { const x = w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16]; w[i] = (x << 1) | (x >>> 31); }
+    let a = h0, b = h1, c = h2, d = h3, e = h4;
+    for (let i = 0; i < 80; i++) {
+      let f, k;
+      if (i < 20) { f = (b & c) | (~b & d); k = 0x5A827999; }
+      else if (i < 40) { f = b ^ c ^ d; k = 0x6ED9EBA1; }
+      else if (i < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8F1BBCDC; }
+      else { f = b ^ c ^ d; k = 0xCA62C1D6; }
+      const t = (((a << 5) | (a >>> 27)) + f + e + k + w[i]) >>> 0;
+      e = d; d = c; c = ((b << 30) | (b >>> 2)) >>> 0; b = a; a = t;
+    }
+    h0 = (h0 + a) >>> 0; h1 = (h1 + b) >>> 0; h2 = (h2 + c) >>> 0; h3 = (h3 + d) >>> 0; h4 = (h4 + e) >>> 0;
+  }
+  return [h0, h1, h2, h3, h4].map(x => x.toString(16).padStart(8, "0")).join("");
+}
+
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+const concat = (...parts) => { const n = parts.reduce((s, p) => s + p.length, 0); const out = new Uint8Array(n); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out; };
+const hexToBytes = hex => Uint8Array.from(hex.match(/../g).map(h => parseInt(h, 16)));
+const bytesToHex = b => Array.from(b, x => x.toString(16).padStart(2, "0")).join("");
+const short = h => h.slice(0, 7);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const typeWord = { blob: "file content", tree: "folder list", commit: "snapshot" };
+const typeLong = { blob: "File-content box", tree: "Folder-list box", commit: "Snapshot box" };
+
+/* ---------------- repository state (mirrors .minigit) ---------------- */
+let S;
+function freshState() {
+  return {
+    files: [{ name: "hello.txt", text: "Hello World\n" }],   // working folder
+    objects: new Map(),   // hex -> { type, raw, content, order, broken }
+    index: new Map(),     // name -> blob hex   ("ready list")
+    main: "",             // refs/heads/main
+    head: { branch: "main", hex: "" },   // HEAD
+    log: [],
+    order: 0,
+    selected: "",
+    pictured: "",
+    flash: new Map(),     // hex -> "fresh" | "reused"
+    fromDisk: false,
+  };
+}
+
+function build(type, content) {
+  const header = enc.encode(`${type} ${content.length}\0`);
+  return concat(header, content);
+}
+function hashOf(type, content) { return sha1(build(type, content)); }
+
+/* store an object; returns { hex, isNew } */
+function store(type, content) {
+  const raw = build(type, content);
+  const hex = sha1(raw);
+  if (S.objects.has(hex) && !S.objects.get(hex).broken) {
+    S.flash.set(hex, "reused");
+    return { hex, isNew: false };
+  }
+  S.objects.set(hex, { type, raw, content, order: ++S.order, broken: false });
+  S.flash.set(hex, "fresh");
+  return { hex, isNew: true };
+}
+
+function headHex() { return S.head.branch ? S.main : S.head.hex; }
+
+function parseTree(content) {
+  const out = [];
+  let p = 0;
+  while (p < content.length) {
+    const sp = content.indexOf(0x20, p);
+    const nul = content.indexOf(0, sp);
+    const mode = dec.decode(content.slice(p, sp));
+    const name = dec.decode(content.slice(sp + 1, nul));
+    const hex = bytesToHex(content.slice(nul + 1, nul + 21));
+    out.push({ mode, name, hex, isTree: mode === "40000" });
+    p = nul + 21;
+  }
+  return out;
+}
+function parseCommit(content) {
+  const text = dec.decode(content);
+  const [head, ...rest] = text.split("\n\n");
+  const c = { tree: "", parent: "", author: "", time: 0, message: rest.join("\n\n").replace(/\n+$/, "") };
+  for (const line of head.split("\n")) {
+    if (line.startsWith("tree ")) c.tree = line.slice(5);
+    else if (line.startsWith("parent ") && !c.parent) c.parent = line.slice(7);
+    else if (line.startsWith("author ")) {
+      const m = line.slice(7).match(/^(.*>)\s+(\d+)/);
+      if (m) { c.author = m[1]; c.time = +m[2]; }
+    }
+  }
+  return c;
+}
+function obj(hex) { return S.objects.get(hex); }
+function commitOf(hex) { const o = obj(hex); return o && o.type === "commit" ? parseCommit(o.content) : null; }
+
+/* flatten a snapshot into name -> blob hex */
+function filesOf(commitHex) {
+  const out = new Map();
+  const c = commitOf(commitHex);
+  if (!c) return out;
+  const walk = (treeHex, prefix) => {
+    const t = obj(treeHex);
+    if (!t || t.type !== "tree") return;
+    for (const e of parseTree(t.content)) {
+      if (e.isTree) walk(e.hex, prefix + e.name + "/");
+      else out.set(prefix + e.name, e.hex);
+    }
+  };
+  walk(c.tree, "");
+  return out;
+}
+function history() {
+  const list = [];
+  let h = headHex();
+  const seen = new Set();
+  while (h && !seen.has(h)) { seen.add(h); const c = commitOf(h); if (!c) break; list.push({ hex: h, ...c }); h = c.parent; }
+  return list;
+}
+function allCommits() {
+  // every snapshot in the cupboard, newest first: more ancestors = later in history
+  const depth = new Map();
+  const depthOf = h => {
+    if (depth.has(h)) return depth.get(h);
+    depth.set(h, 0);
+    const c = commitOf(h);
+    const d = c && c.parent && commitOf(c.parent) ? depthOf(c.parent) + 1 : 0;
+    depth.set(h, d);
+    return d;
+  };
+  return [...S.objects.entries()].filter(([, o]) => o.type === "commit")
+    .map(([hex, o]) => ({ hex, ...parseCommit(o.content), order: o.order, depth: depthOf(hex) }))
+    .sort((a, b) => (b.depth - a.depth) || (b.time - a.time) || (b.order - a.order));
+}
+
+/* ---------------- status of one file ---------------- */
+function fileStatus(f) {
+  const now = hashOf("blob", enc.encode(f.text));
+  const ready = S.index.get(f.name);
+  const inSnap = filesOf(headHex()).get(f.name);
+  if (!ready) return { cls: "b-new", text: "New — not in the cupboard yet", now };
+  if (ready !== now) return { cls: "b-changed", text: "Changed — put it in again", now };
+  if (ready !== inSnap) return { cls: "b-ready", text: "In cupboard — ready for snapshot", now };
+  return { cls: "b-safe", text: "Safe in the last snapshot", now };
+}
+function isDirty() {
+  const snap = filesOf(headHex());
+  for (const f of S.files) {
+    const st = fileStatus(f);
+    if (st.cls === "b-changed" || st.cls === "b-ready") return true;
+    if (st.cls === "b-new" && snap.has(f.name)) return true;
+  }
+  for (const [name, hex] of S.index) if (snap.get(name) !== hex) return true;
+  for (const name of snap.keys()) if (!S.index.has(name)) return true;
+  return false;
+}
+
+/* ---------------- actions (each mirrors a minigit command) ---------------- */
+function say(html, cmd, bad) { S.log.unshift({ html, cmd, bad: !!bad }); }
+
+function addFile(name) {
+  const f = S.files.find(x => x.name === name);
+  if (!f) return null;
+  const { hex, isNew } = store("blob", enc.encode(f.text));
+  const before = S.index.get(name);
+  S.index.set(name, hex);
+  S.selected = hex;
+  if (before === hex) {
+    say(`<b>${esc(name)}</b> was already in the cupboard with the same content — nothing to do.`, `minigit add ${name}`);
+  } else if (isNew) {
+    say(`<b>${esc(name)}</b> was fingerprinted: <code>${short(hex)}</code>. No box had that name, so a <b>new box</b> was put in the cupboard at <code>objects/${hex.slice(0,2)}/${hex.slice(2,8)}…</code>.`, `minigit add ${name}`);
+  } else {
+    say(`<b>${esc(name)}</b> got fingerprint <code>${short(hex)}</code> — a box with that name <b>already exists</b>, because the same text was saved before. <b>Nothing new was stored.</b>`, `minigit add ${name}`);
+  }
+  return { hex, isNew, unchanged: before === hex };
+}
+
+function addAll() {
+  const results = S.files.map(f => ({ name: f.name, ...addFile(f.name) }));
+  for (const name of [...S.index.keys()]) {
+    if (!S.files.some(f => f.name === name)) {
+      S.index.delete(name);
+      say(`<b>${esc(name)}</b> was deleted, so it was taken off the ready list.`, `minigit add .`);
+    }
+  }
+  return results;
+}
+
+/* same layout as src/tree.c: one folder-list box per directory */
+function writeTree() {
+  const names = [...S.index.keys()].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+  const level = (list, plen) => {
+    const parts = [];
+    let i = 0;
+    while (i < list.length) {
+      const rest = list[i].slice(plen);
+      const slash = rest.indexOf("/");
+      if (slash < 0) { parts.push(enc.encode(`100644 ${rest}\0`), hexToBytes(S.index.get(list[i]))); i++; continue; }
+      const dir = rest.slice(0, slash);
+      let j = i;
+      while (j < list.length && list[j].slice(plen).startsWith(dir + "/")) j++;
+      const sub = level(list.slice(i, j), plen + dir.length + 1);
+      parts.push(enc.encode(`40000 ${dir}\0`), hexToBytes(sub.hex));
+      i = j;
+    }
+    return store("tree", concat(...parts));
+  };
+  return level(names, 0);
+}
+
+function commit(message) {
+  message = (message || "").trim() || "Snapshot";
+  const parent = headHex();
+  if (!S.index.size && !parent) {
+    say(`Nothing to snapshot yet — put a file in the cupboard first.`, `minigit commit -m "${message}"`, true);
+    return { ok: false, reason: "empty" };
+  }
+  const tree = writeTree();
+  const prev = commitOf(parent);
+  if (prev && prev.tree === tree.hex) {
+    say(`Nothing changed since the last snapshot, so no new snapshot was made.`, `minigit commit -m "${message}"`, true);
+    return { ok: false, reason: "same" };
+  }
+  const t = Math.floor(Date.now() / 1000);
+  const who = "You <you@example.com>";
+  let text = `tree ${tree.hex}\n`;
+  if (parent) text += `parent ${parent}\n`;
+  text += `author ${who} ${t} +0000\ncommitter ${who} ${t} +0000\n\n${message}\n`;
+  const c = store("commit", enc.encode(text));
+  if (S.head.branch) S.main = c.hex; else S.head.hex = c.hex;
+  S.pictured = c.hex;
+  S.selected = c.hex;
+  say(`Snapshot <b>"${esc(message)}"</b> taken. A <b>folder-list box</b> <code>${short(tree.hex)}</code> ${tree.isNew ? "was made" : "was reused"} listing every file and its fingerprint, then a <b>snapshot box</b> <code>${short(c.hex)}</code> was made pointing to it${parent ? ` and to the previous snapshot <code>${short(parent)}</code>` : ""}.`, `minigit commit -m "${message}"`);
+  return { ok: true, hex: c.hex, tree, parent };
+}
+
+function checkout(target) {
+  const toMain = target === "main";
+  const hex = toMain ? S.main : target;
+  if (!commitOf(hex)) return { ok: false };
+  if (isDirty()) {
+    say(`Time travel <b>blocked</b>: some files have changes that are not in a snapshot yet. Take a snapshot first so nothing is lost.`, `minigit checkout ${toMain ? "main" : short(hex)}`, true);
+    return { ok: false, reason: "dirty" };
+  }
+  const files = filesOf(hex);
+  S.files = [...files.entries()].map(([name, b]) => ({ name, text: dec.decode(obj(b).content) }));
+  S.index = new Map(files);
+  S.head = toMain ? { branch: "main", hex: "" } : { branch: "", hex };
+  S.pictured = hex;
+  const c = commitOf(hex);
+  say(toMain
+    ? `Back to the newest snapshot <b>"${esc(c.message)}"</b>. Every file was rebuilt from its box in the cupboard.`
+    : `Travelled back to <b>"${esc(c.message)}"</b>. Your files were rebuilt from the boxes that snapshot points to. Nothing in the cupboard was deleted.`,
+    `minigit checkout ${toMain ? "main" : short(hex)}`);
+  return { ok: true, hex };
+}
+
+function verifyAll() {
+  let ok = 0, bad = [];
+  for (const [hex, o] of S.objects) { if (sha1(o.raw) === hex) ok++; else { bad.push(hex); o.broken = true; } }
+  if (bad.length) {
+    say(`Checked ${ok + bad.length} boxes: <b>${bad.length} damaged</b> (${bad.map(h => `<code>${short(h)}</code>`).join(", ")}). Their contents no longer match their fingerprint.`, `minigit verify`, true);
+    S.selected = bad[0];
+  } else {
+    say(`Checked ${ok} boxes: <b>all fine</b>. Every box's contents still match its fingerprint.`, `minigit verify`);
+  }
+  return { ok, bad };
+}
+
+function scribble(hex) {
+  const o = obj(hex);
+  if (!o) return;
+  o.raw = concat(o.raw, enc.encode("X"));
+  S.selected = hex;
+  say(`Someone scribbled one extra letter onto box <code>${short(hex)}</code> (like disk damage or tampering).`, `printf 'X' >> .minigit/objects/${hex.slice(0,2)}/${hex.slice(2)}`, true);
+}
+
+/* ---------------- guided tour ---------------- */
+let step = 0, result = null;
+const done = new Set();
+const ensureFile = (name, text) => { const f = S.files.find(x => x.name === name); if (f) f.text = text; else S.files.push({ name, text }); };
+
+const STEPS = [
+  {
+    title: "Meet the fingerprint",
+    body: `<p>A <b>fingerprint</b> is a short code worked out from the text. Same text → always the same fingerprint. Change <i>one</i> letter → a completely different one.</p>
+           <p>Try it in the <b>fingerprint machine</b> below: make Text B the same as Text A and watch the two codes match.</p>`,
+    term: "SHA-1 hash · src/sha1.c",
+    action: null,
+    after: () => ({ ok: true, items: [
+      `"Hello World" always gives <code>557db03…</code> — on any computer, forever.`,
+      `This code is what minigit uses as the <b>name</b> of the data. That's the whole idea of content-addressable storage.`] }),
+  },
+  {
+    title: "Put a file in the cupboard",
+    body: `<p>You have a file <code>hello.txt</code> that says <i>Hello World</i>. Let's store it.</p>
+           <p>minigit takes its fingerprint and puts the text in a box <b>named by that fingerprint</b>.</p>`,
+    term: "minigit add hello.txt",
+    actionLabel: "Put hello.txt in the cupboard",
+    action: () => { ensureFile("hello.txt", S.files.find(f => f.name === "hello.txt")?.text ?? "Hello World\n"); return addFile("hello.txt"); },
+    after: r => ({ ok: true, items: [
+      `The fingerprint of hello.txt is <code>${short(r.hex)}</code>.`,
+      r.isNew ? `A <b>new teal box</b> appeared in the cupboard. Its name is the fingerprint.` : `A box with this fingerprint was already there, so nothing new was stored.`,
+      `On disk it lives at <code>.minigit/objects/${r.hex.slice(0,2)}/${r.hex.slice(2,10)}…</code> — the first 2 characters are the folder.`,
+      `Notice: the box holds only the <b>text</b>. The file name is not inside it.`] }),
+  },
+  {
+    title: "Store a copy",
+    body: `<p>Now make <code>copy.txt</code> with exactly the same text and store it too.</p>
+           <p>Will the cupboard get a second box?</p>`,
+    term: "minigit add copy.txt",
+    actionLabel: "Make copy.txt and put it in",
+    action: () => { const src = S.files.find(f => f.name === "hello.txt"); ensureFile("copy.txt", src ? src.text : "Hello World\n"); return addFile("copy.txt"); },
+    after: r => ({ ok: true, items: [
+      `copy.txt got the <b>same fingerprint</b> <code>${short(r.hex)}</code> because the text is the same.`,
+      r.isNew ? `Hmm — a new box was made, so the text must differ from hello.txt.` : `<b>No new box.</b> The existing one flashed green: it's shared by both files. This is <b>deduplication</b>.`,
+      `Two files, one stored copy. That's how Git saves space.`] }),
+  },
+  {
+    title: "Take a snapshot",
+    body: `<p>A <b>snapshot</b> remembers what every file looked like right now.</p>
+           <p>minigit makes a <b>folder-list box</b> (names → fingerprints) and a <b>snapshot box</b> that points to it.</p>`,
+    term: 'minigit commit -m "First snapshot"',
+    actionLabel: "Take the first snapshot",
+    action: () => { addAll(); return commit(document.getElementById("msg").value || "First snapshot"); },
+    after: r => r.ok ? ({ ok: true, items: [
+      `An <b>amber folder-list box</b> <code>${short(r.tree.hex)}</code> now says which file uses which content box.`,
+      `A <b>purple snapshot box</b> <code>${short(r.hex)}</code> points to that list${r.parent ? " and to the snapshot before it" : ""}.`,
+      `Look at the <b>picture</b> below: snapshot → folder list → file contents.`] })
+      : ({ ok: false, items: [r.reason === "same" ? "Nothing changed since the last snapshot, so there was nothing new to save." : "There was nothing in the cupboard to snapshot."] }),
+  },
+  {
+    title: "Change a file, snapshot again",
+    body: `<p>Change <code>hello.txt</code> to say <i>Hello minigit</i>, store it, and take a second snapshot.</p>
+           <p>Watch which boxes are new and which are reused.</p>`,
+    term: "minigit add . && minigit commit",
+    actionLabel: "Change hello.txt and snapshot",
+    action: () => { document.getElementById("msg").value = "Update greeting"; ensureFile("hello.txt", "Hello minigit\n"); addAll(); return commit("Update greeting"); },
+    after: r => r.ok ? ({ ok: true, items: [
+      `hello.txt now has a <b>new fingerprint</b>, so it got a <b>new box</b>.`,
+      `copy.txt did not change — its box was <b>reused</b> (green outline in the picture).`,
+      `A new folder list and a new snapshot were made. The new snapshot points back to the first one — that link is the <b>history</b>.`] })
+      : ({ ok: false, items: ["Nothing changed, so no snapshot was made."] }),
+  },
+  {
+    title: "Time travel",
+    body: `<p>Go back to the <b>first snapshot</b>. minigit reads its boxes and rebuilds your files exactly as they were.</p>
+           <p>After that, press <b>Back to newest</b> to return.</p>`,
+    term: "minigit checkout <snapshot>",
+    actionLabel: "Travel to the first snapshot",
+    extra: { label: "Back to newest", run: () => checkout("main") },
+    action: () => { const h = history(); if (!h.length) return { ok: false, reason: "none" }; return checkout(h[h.length - 1].hex); },
+    after: r => r.ok ? ({ ok: true, items: [
+      `Your files now show the old text — look at <b>hello.txt</b>.`,
+      `Nothing was deleted from the cupboard. Old boxes are kept, which is why going back is possible.`,
+      `The snapshot list marks where you are with <b>you are here</b>.`] })
+      : ({ ok: false, items: [r.reason === "dirty" ? "Blocked: you have changes that are not in a snapshot yet. Take a snapshot first." : "There are no snapshots yet — do the earlier steps first."] }),
+  },
+  {
+    title: "Catch damage",
+    body: `<p>Now pretend the disk got damaged: one extra letter is scribbled onto a box.</p>
+           <p>Then minigit checks every box by working out its fingerprint again.</p>`,
+    term: "minigit verify",
+    actionLabel: "Scribble on a box, then check",
+    action: () => {
+      const target = [...S.objects.entries()].find(([, o]) => o.type === "blob");
+      if (!target) return { ok: false };
+      scribble(target[0]);
+      return verifyAll();
+    },
+    after: r => r.bad && r.bad.length ? ({ ok: false, alarm: true, items: [
+      `Box <code>${short(r.bad[0])}</code> turned <b>red</b>.`,
+      `Its contents now give a <b>different fingerprint</b> than its name, so the damage is caught.`,
+      `This works for any change, even one letter — that's the <b>integrity check</b>.`] })
+      : ({ ok: false, items: ["There was no box to damage yet — do the earlier steps first."] }),
+  },
+  {
+    title: "Now try the real program",
+    body: `<p>Everything you just saw is exactly what the C program does in its <code>.minigit</code> folder. The fingerprints here and in the terminal are the same.</p>
+           <p>Run the commands from the list below in a terminal, then click <b>Open my real .minigit folder</b> at the top to see your own boxes and snapshots.</p>`,
+    term: "make && ./minigit",
+    action: null,
+    after: () => ({ ok: true, items: [
+      `<b>Fingerprint</b> = SHA-1 hash · <b>box</b> = object · <b>cupboard</b> = <code>.minigit/objects</code>`,
+      `<b>file content</b> = blob · <b>folder list</b> = tree · <b>snapshot</b> = commit · <b>time travel</b> = checkout`,
+      `Free play: edit files, add new ones, take snapshots, and click any box to open it.`] }),
+  },
+];
+
+function renderTour() {
+  const s = STEPS[step];
+  const el = document.getElementById("tour");
+  const res = result ?? (s.action ? null : s.after());
+  el.innerHTML = `
+    <ol class="steps" aria-label="Tour steps">${STEPS.map((x, i) => `<li><button data-step="${i}" ${i === step ? 'aria-current="step"' : ""} class="${done.has(i) ? "done" : ""}">${i + 1}. ${esc(x.title)}</button></li>`).join("")}</ol>
+    <div class="tour-body">
+      <div class="tour-text">
+        <h2>${step + 1}. ${esc(s.title)}</h2>
+        ${s.body}
+        <p class="term">In the terminal: ${esc(s.term)}</p>
+        <div class="tour-actions">
+          ${s.action ? `<button class="primary" id="tour-do">${esc(s.actionLabel)}</button>` : ""}
+          ${s.extra ? `<button id="tour-extra">${esc(s.extra.label)}</button>` : ""}
+          ${step > 0 ? `<button id="tour-back">Back</button>` : ""}
+          ${step < STEPS.length - 1 ? `<button id="tour-next">Next step</button>` : ""}
+        </div>
+      </div>
+      <div class="happened ${res ? (res.alarm ? "alarm" : "") : "waiting"}" aria-live="polite">
+        <h3>${res ? "What just happened" : "What will happen"}</h3>
+        ${res ? `<ul>${res.items.map(i => `<li>${i}</li>`).join("")}</ul>`
+              : `<p>Press the dark button. Then read here what changed, and look at the cupboard and pictures below.</p>`}
+      </div>
+    </div>`;
+  el.querySelectorAll("[data-step]").forEach(b => b.onclick = () => { step = +b.dataset.step; result = null; renderTour(); });
+  const doBtn = el.querySelector("#tour-do");
+  if (doBtn) doBtn.onclick = () => { const r = s.action(); result = s.after(r || {}); done.add(step); renderAll(); };
+  const ex = el.querySelector("#tour-extra");
+  if (ex) ex.onclick = () => { const r = s.extra.run(); result = r.ok ? { ok: true, items: ["You're back at the newest snapshot. Your files show the latest text again."] } : { ok: false, items: ["Could not go back — take a snapshot of your changes first."] }; renderAll(); };
+  const back = el.querySelector("#tour-back");
+  if (back) back.onclick = () => { step--; result = null; renderTour(); };
+  const next = el.querySelector("#tour-next");
+  if (next) next.onclick = () => { if (!STEPS[step].action) done.add(step); step++; result = null; renderTour(); };
+}
+
+/* ---------------- rendering ---------------- */
+function renderFingerprints() {
+  const a = document.getElementById("fp-a").value, b = document.getElementById("fp-b").value;
+  const ha = hashOf("blob", enc.encode(a + "\n")), hb = hashOf("blob", enc.encode(b + "\n"));
+  document.getElementById("fp-a-out").textContent = ha;
+  let same = 0;
+  document.getElementById("fp-b-out").innerHTML = [...hb].map((c, i) => { if (c === ha[i]) same++; return `<span class="${c === ha[i] ? "same" : "diff"}">${c}</span>`; }).join("");
+  document.getElementById("fp-verdict").innerHTML = a === b
+    ? `<b style="color:var(--good)">Same text → same fingerprint.</b> minigit would store this only once.`
+    : `<b style="color:var(--bad)">Different text → different fingerprint.</b> ${40 - same} of 40 characters changed (red), even though the texts are almost the same.`;
+}
+
+function renderFiles() {
+  const box = document.getElementById("files");
+  if (!S.files.length) { box.innerHTML = `<p class="empty">No files. Add one below.</p>`; return; }
+  box.innerHTML = S.files.map((f, i) => {
+    const st = fileStatus(f);
+    return `<div class="file">
+      <div class="file-top"><span class="fname">${esc(f.name)}</span><span class="badge ${st.cls}">${st.text}</span></div>
+      <textarea id="file-${i}" data-i="${i}" aria-label="Contents of ${esc(f.name)}" rows="2">${esc(f.text)}</textarea>
+      <div class="file-actions">
+        <button data-add="${i}">Put in cupboard</button>
+        <button data-del="${i}" class="danger">Delete</button>
+        <span class="term" style="align-self:center">fingerprint now: ${short(st.now)}</span>
+      </div></div>`;
+  }).join("");
+  box.querySelectorAll("textarea").forEach(t => t.oninput = () => {
+    S.files[+t.dataset.i].text = t.value;
+    const f = S.files[+t.dataset.i], st = fileStatus(f);
+    const card = t.closest(".file");
+    const badge = card.querySelector(".badge");
+    badge.className = "badge " + st.cls; badge.textContent = st.text;
+    card.querySelector(".term").textContent = "fingerprint now: " + short(st.now);
+  });
+  box.querySelectorAll("[data-add]").forEach(b => b.onclick = () => { addFile(S.files[+b.dataset.add].name); renderAll(); });
+  box.querySelectorAll("[data-del]").forEach(b => b.onclick = () => {
+    const f = S.files.splice(+b.dataset.del, 1)[0];
+    say(`<b>${esc(f.name)}</b> was deleted from your folder. Put all files in the cupboard to record the deletion.`, `rm ${f.name}`);
+    renderAll();
+  });
+}
+
+function blobLabel(hex) {
+  const names = new Set();
+  for (const [n, h] of S.index) if (h === hex) names.add(n);
+  for (const c of allCommits()) for (const [n, h] of filesOf(c.hex)) if (h === hex) names.add(n);
+  const o = obj(hex);
+  const preview = dec.decode(o.content.slice(0, 40)).replace(/\n/g, " ").trim();
+  return { names: [...names], preview };
+}
+
+function renderCupboard() {
+  const shelves = [
+    ["blob", "File contents", "blob", "var(--blob)"],
+    ["tree", "Folder lists", "tree", "var(--tree)"],
+    ["commit", "Snapshots", "commit", "var(--commit)"],
+  ];
+  const box = document.getElementById("cupboard");
+  box.innerHTML = shelves.map(([type, label, term, color]) => {
+    const items = [...S.objects.entries()].filter(([, o]) => o.type === type).sort((a, b) => a[1].order - b[1].order);
+    return `<div class="shelf">
+      <div class="shelf-title"><span class="dot" style="background:${color}"></span>${label} <span class="term">(${term}s: ${items.length})</span></div>
+      <div class="shelf-items">${items.length ? items.map(([hex, o]) => {
+        let what;
+        if (type === "blob") { const l = blobLabel(hex); what = l.names.length ? `used by ${l.names.join(", ")}` : `"${l.preview}"`; }
+        else if (type === "tree") what = parseTree(o.content).map(e => e.name).join(", ") || "(empty)";
+        else what = parseCommit(o.content).message;
+        const fl = S.flash.get(hex);
+        return `<button class="obj t-${type} ${S.selected === hex ? "sel" : ""} ${o.broken ? "broken" : ""} ${fl || ""}" data-obj="${hex}" title="${esc(what)}">
+          <span class="h">${short(hex)}</span><span class="what">${esc(what)}</span></button>`;
+      }).join("") : `<p class="empty">empty</p>`}</div></div>`;
+  }).join("");
+  box.querySelectorAll("[data-obj]").forEach(b => b.onclick = () => { S.selected = b.dataset.obj; if (obj(S.selected).type === "commit") S.pictured = S.selected; S.flash.clear(); renderAll(); });
+
+  // savings
+  let full = 0, unique = 0;
+  const seen = new Set();
+  const commits = allCommits();
+  for (const c of commits) for (const h of filesOf(c.hex).values()) {
+    const n = obj(h).content.length; full += n;
+    if (!seen.has(h)) { seen.add(h); unique += n; }
+  }
+  const pct = full ? Math.round(100 * (full - unique) / full) : 0;
+  document.getElementById("savings").innerHTML = commits.length
+    ? `<div class="nums"><span>If every snapshot kept full copies: <b>${full} bytes</b></span><span>Actually stored: <b>${unique} bytes</b></span></div>
+       <div class="bar" role="img" aria-label="${pct} percent saved"><span style="width:${pct}%"></span></div>
+       <p class="small"><b style="color:var(--good)">${pct}% saved</b> because identical contents share one box. <span class="term">minigit stats</span></p>`
+    : `<p class="small soft">Take a snapshot to see how much space sharing boxes saves. <span class="term">minigit stats</span></p>`;
+}
+
+function renderSnaps() {
+  const box = document.getElementById("snaps");
+  const list = allCommits();
+  const here = headHex();
+  if (!list.length) { box.innerHTML = `<p class="empty">No snapshots yet.</p>`; return; }
+  box.innerHTML = list.map((c, i) => `
+    ${i ? `<div class="chainlink" aria-hidden="true">↑ comes after</div>` : ""}
+    <div class="snap ${c.hex === here ? "here" : ""}" data-snap="${c.hex}" tabindex="0" role="button" aria-label="Snapshot ${esc(c.message)}">
+      <div class="snap-top"><span class="msg">${esc(c.message)}</span>
+        <span style="display:flex;gap:6px">${c.hex === S.main ? `<span class="pill main">main</span>` : ""}${c.hex === here ? `<span class="pill">you are here</span>` : ""}</span></div>
+      <span class="term">${short(c.hex)} · ${[...filesOf(c.hex).keys()].length} files${c.time ? " · " + new Date(c.time * 1000).toLocaleTimeString() : ""}</span>
+      ${c.hex !== here ? `<button data-go="${c.hex}" style="justify-self:start;font-size:14px;padding:5px 10px">Time travel here</button>` : ""}
+    </div>`).join("");
+  box.querySelectorAll("[data-snap]").forEach(el => {
+    const pick = () => { S.pictured = el.dataset.snap; S.selected = el.dataset.snap; S.flash.clear(); renderAll(); };
+    el.onclick = e => { if (!e.target.closest("[data-go]")) pick(); };
+    el.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } };
+  });
+  box.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { checkout(b.dataset.go === S.main ? "main" : b.dataset.go); renderAll(); });
+}
+
+function renderPicture() {
+  const box = document.getElementById("pic");
+  const hex = S.pictured && commitOf(S.pictured) ? S.pictured : headHex();
+  const c = commitOf(hex);
+  if (!c) { box.innerHTML = `<p class="empty">Take a snapshot and its picture appears here.</p>`; document.getElementById("pic-title").textContent = "Picture of a snapshot"; return; }
+  document.getElementById("pic-title").textContent = `Picture of "${c.message}"`;
+  const prevFiles = c.parent ? filesOf(c.parent) : new Map();
+  const t = obj(c.tree);
+  const entries = t ? parseTree(t.content) : [];
+  box.innerHTML = `
+    ${c.parent ? `<div class="arrow">comes after snapshot <code>${short(c.parent)}</code> (${esc(commitOf(c.parent)?.message ?? "")})</div>` : `<div class="arrow">first snapshot — nothing before it</div>`}
+    <button class="node n-commit obj t-commit" data-obj="${hex}"><div><b>Snapshot</b></div><div class="h">${short(hex)}</div><div class="small">"${esc(c.message)}"</div></button>
+    <div class="arrow">↓ points to</div>
+    <button class="node n-tree obj t-tree" data-obj="${c.tree}"><div><b>Folder list</b></div><div class="h">${short(c.tree)}</div><div class="small">${entries.length} names</div></button>
+    <div class="arrow">↓ each name points to a content box</div>
+    <div class="leaves">${entries.map(e => {
+      if (e.isTree) return `<div class="leaf"><span class="fn">${esc(e.name)}/</span>
+        <button class="node n-tree obj t-tree" data-obj="${e.hex}"><div class="h">${short(e.hex)}</div><div class="small">sub-folder list</div></button></div>`;
+      const shared = prevFiles.size && [...prevFiles.values()].includes(e.hex);
+      return `<div class="leaf"><span class="fn">${esc(e.name)}</span>
+        <button class="node n-blob obj t-blob ${shared ? "shared" : ""}" data-obj="${e.hex}"><div class="h">${short(e.hex)}</div><div class="small">${esc(dec.decode(obj(e.hex)?.content.slice(0, 24) ?? new Uint8Array()).replace(/\n/g, " "))}</div></button>
+        ${c.parent ? (shared ? `<span class="tag">reused from before</span>` : `<span class="tag" style="color:var(--tree)">new in this snapshot</span>`) : ""}</div>`;
+    }).join("")}</div>`;
+  box.querySelectorAll("[data-obj]").forEach(b => b.onclick = () => { S.selected = b.dataset.obj; S.flash.clear(); renderAll(); });
+}
+
+function showRaw(o) {
+  const raw = o.raw;
+  const nul = raw.indexOf(0);
+  const header = esc(dec.decode(raw.slice(0, nul)));
+  let body;
+  if (o.type === "tree") {
+    const content = raw.slice(nul + 1);
+    let p = 0, parts = [];
+    while (p < content.length) {
+      const z = content.indexOf(0, p);
+      if (z < 0 || z + 21 > content.length) { parts.push(esc(dec.decode(content.slice(p)))); break; }
+      parts.push(`${esc(dec.decode(content.slice(p, z)))}<span class="nul">␀</span><span class="bin">[20 bytes: ${short(bytesToHex(content.slice(z + 1, z + 21)))}…]</span>\n`);
+      p = z + 21;
+    }
+    body = parts.join("");
+  } else {
+    body = esc(dec.decode(raw.slice(nul + 1)));
+  }
+  return `${header}<span class="nul">␀</span>${body}`;
+}
+
+function renderInspect() {
+  const box = document.getElementById("inspect");
+  const hex = S.selected;
+  const o = hex && obj(hex);
+  if (!o) { box.innerHTML = `<p class="empty">Click any box in the cupboard or in the picture to open it.</p>`; return; }
+  const now = sha1(o.raw);
+  const intact = now === hex;
+  const explain = {
+    blob: `This box holds the <b>text of a file</b> — and nothing else. No file name. That's why two files with the same text share this one box.`,
+    tree: `This box is a <b>list of file names</b>, each with the fingerprint of its content box. The ␀ marks a zero byte; after it come 20 raw bytes of fingerprint.`,
+    commit: `This box is a <b>snapshot</b>: which folder list to use, which snapshot came before (<code>parent</code>), who made it, when, and the name you gave it.`,
+  }[o.type];
+  box.innerHTML = `
+    <div style="display:grid;gap:12px">
+      <p><b>${typeLong[o.type]}</b> <span class="term">(${o.type})</span></p>
+      <p class="small">${explain}</p>
+      <dl class="kv">
+        <dt>Fingerprint</dt><dd class="mono">${hex}</dd>
+        <dt>Stored at</dt><dd class="mono">.minigit/objects/${hex.slice(0, 2)}/${hex.slice(2)}</dd>
+        <dt>Size</dt><dd>${o.content.length} bytes of ${typeWord[o.type]}</dd>
+        <dt>Check</dt><dd>${intact ? `<b style="color:var(--good)">OK — contents still match the fingerprint</b>` : `<b style="color:var(--bad)">DAMAGED — contents now give ${short(now)}…</b>`}</dd>
+      </dl>
+      <div><p class="small"><b>Exactly what is stored</b> <span class="term">minigit cat-file</span></p>
+        <div class="inside">${showRaw(o)}</div>
+        <p class="small soft" style="margin-top:6px">The fingerprint is worked out from all of these bytes, including the first part (<code>${o.type} ${o.content.length}</code>) and the ␀.</p></div>
+      <div class="row" style="flex-wrap:wrap">
+        <button id="insp-verify">Check this box</button>
+        <button id="insp-break" class="danger">Scribble on it</button>
+      </div>
+    </div>`;
+  box.querySelector("#insp-verify").onclick = () => {
+    const ok = sha1(o.raw) === hex;
+    if (!ok) o.broken = true;
+    say(ok ? `Box <code>${short(hex)}</code> checked: <b>OK</b>.` : `Box <code>${short(hex)}</code> checked: <b>DAMAGED</b> — its contents no longer match its fingerprint.`, `minigit verify ${short(hex)}`, !ok);
+    renderAll();
+  };
+  box.querySelector("#insp-break").onclick = () => { scribble(hex); renderAll(); };
+}
+
+function renderLog() {
+  const box = document.getElementById("log");
+  box.innerHTML = S.log.length
+    ? S.log.map(e => `<div class="entry ${e.bad ? "bad" : ""}"><p class="small">${e.html}</p><span class="cmd">${esc(e.cmd)}</span></div>`).join("")
+    : `<p class="empty">Nothing yet. Start with the guided tour above.</p>`;
+}
+
+function renderAll() {
+  renderTour(); renderFiles(); renderCupboard(); renderSnaps(); renderPicture(); renderInspect(); renderLog();
+  S.flash.clear();
+}
+
+/* ---------------- load a real .minigit folder ---------------- */
+async function loadFolder(fileList) {
+  const files = [...fileList];
+  const msg = document.getElementById("open-msg");
+  const rel = f => f.webkitRelativePath || f.name;
+  const inRepo = files.filter(f => rel(f).split("/").includes(".minigit"));
+  if (!inRepo.length) {
+    msg.innerHTML = `<b style="color:var(--bad)">No .minigit folder found.</b> Choose the folder where you ran <code>minigit init</code>. If you chose the right one, your browser may be hiding dot-folders — try Chrome or Edge.`;
+    return;
+  }
+  const next = freshState();
+  next.files = [];
+  next.fromDisk = true;
+  const repoPath = f => { const parts = rel(f).split("/"); return parts.slice(parts.indexOf(".minigit") + 1).join("/"); };
+  let order = 0;
+  for (const f of inRepo) {
+    const p = repoPath(f);
+    const m = p.match(/^objects\/([0-9a-f]{2})\/([0-9a-f]{38})$/);
+    if (!m) continue;
+    const raw = new Uint8Array(await f.arrayBuffer());
+    const nul = raw.indexOf(0);
+    const [type] = dec.decode(raw.slice(0, nul)).split(" ");
+    if (!["blob", "tree", "commit"].includes(type)) continue;
+    const hex = m[1] + m[2];
+    next.objects.set(hex, { type, raw, content: raw.slice(nul + 1), order: ++order, broken: sha1(raw) !== hex });
+  }
+  const textOf = async p => { const f = inRepo.find(x => repoPath(x) === p); return f ? (await f.text()).trim() : ""; };
+  const headTxt = await textOf("HEAD");
+  const mainTxt = await textOf("refs/heads/main");
+  next.main = /^[0-9a-f]{40}$/.test(mainTxt) ? mainTxt : "";
+  next.head = headTxt.startsWith("ref: refs/heads/") ? { branch: "main", hex: "" } : { branch: "", hex: headTxt };
+  for (const line of (await textOf("index")).split("\n")) {
+    const mm = line.match(/^([0-9a-f]{40}) (.+)$/);
+    if (mm) next.index.set(mm[2], mm[1]);
+  }
+  for (const f of files) {
+    if (rel(f).split("/").includes(".minigit") || rel(f).split("/").includes(".git") || f.size > 200000) continue;
+    const parts = rel(f).split("/");
+    next.files.push({ name: parts.slice(1).join("/") || f.name, text: await f.text() });
+  }
+  next.files.sort((a, b) => a.name < b.name ? -1 : 1);
+  S = next;
+  S.pictured = headHex();
+  const counts = { blob: 0, tree: 0, commit: 0 };
+  for (const o of S.objects.values()) counts[o.type]++;
+  const broken = [...S.objects.values()].filter(o => o.broken).length;
+  say(`Loaded your real repository: <b>${counts.blob}</b> file-content boxes, <b>${counts.tree}</b> folder lists, <b>${counts.commit}</b> snapshots${broken ? `, <b style="color:var(--bad)">${broken} damaged</b>` : ""}.`, "ls .minigit/objects");
+  msg.innerHTML = `<b style="color:var(--good)">Loaded.</b> Scroll down: the cupboard, snapshots and pictures now show what your C program stored.`;
+  step = STEPS.length - 1; result = null;
+  renderAll();
+}
+
+/* ---------------- wiring ---------------- */
+function setMode(open) {
+  document.getElementById("mode-tour").setAttribute("aria-pressed", String(!open));
+  document.getElementById("mode-open").setAttribute("aria-pressed", String(open));
+  document.getElementById("tour").hidden = open;
+  document.getElementById("openpanel").hidden = !open;
+}
+document.getElementById("mode-tour").onclick = () => setMode(false);
+document.getElementById("mode-open").onclick = () => setMode(true);
+document.getElementById("reset").onclick = () => { S = freshState(); step = 0; result = null; done.clear(); document.getElementById("msg").value = "First snapshot"; renderAll(); };
+document.getElementById("folder").onchange = e => loadFolder(e.target.files);
+document.getElementById("fp-a").oninput = renderFingerprints;
+document.getElementById("fp-b").oninput = renderFingerprints;
+document.getElementById("addall").onclick = () => { addAll(); renderAll(); };
+document.getElementById("commit").onclick = () => { commit(document.getElementById("msg").value); renderAll(); };
+document.getElementById("verify").onclick = () => { verifyAll(); renderAll(); };
+document.getElementById("newfile").onclick = () => {
+  const input = document.getElementById("newname");
+  const name = input.value.trim().replace(/[\\/]/g, "-");
+  if (!name) { input.focus(); return; }
+  if (!S.files.some(f => f.name === name)) S.files.push({ name, text: "" });
+  input.value = "";
+  say(`New file <b>${esc(name)}</b> created in your folder. It's not in the cupboard yet.`, `touch ${name}`);
+  renderAll();
+};
+
+S = freshState();
+renderFingerprints();
+renderAll();
+})();
+</script>
